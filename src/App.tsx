@@ -18,6 +18,7 @@ type Visitor = {
 
 type Delivery = {
   id: string
+  relationId?: string
   vendor: string
   category: string
   code: string
@@ -27,6 +28,7 @@ type Delivery = {
 
 type AccessCode = {
   id: string
+  relationId?: string
   code: string
   person: string
   purpose: string
@@ -359,10 +361,12 @@ function App() {
   const createDeliveryCode = () => {
     const vendor = service.trim() || 'Custom Delivery'
     const newCode = buildCode('DLV')
+    const relationId = crypto.randomUUID()
 
     setDeliveries((current) => [
       {
         id: crypto.randomUUID(),
+        relationId,
         vendor,
         category: `${deliveryType} Delivery`,
         code: newCode,
@@ -375,6 +379,7 @@ function App() {
     setCodes((current) => [
       {
         id: crypto.randomUUID(),
+        relationId,
         code: buildCode('GP'),
         person: vendor,
         purpose: 'Delivery',
@@ -424,6 +429,46 @@ function App() {
       await navigator.clipboard.writeText(value)
     } catch {
       window.prompt('Copy code', value)
+    }
+  }
+
+  const revokeCode = (codeId: string) => {
+    const targetCode = codes.find((entry) => entry.id === codeId)
+
+    if (!targetCode || targetCode.status === 'expired') {
+      return
+    }
+
+    setCodes((current) =>
+      current.map((entry) =>
+        entry.id === codeId
+          ? {
+              ...entry,
+              status: 'expired',
+              validUntil: 'Access revoked',
+            }
+          : targetCode.relationId && entry.relationId === targetCode.relationId
+            ? {
+                ...entry,
+                status: 'expired',
+                validUntil: 'Access revoked',
+              }
+            : entry,
+      ),
+    )
+
+    if (targetCode.relationId) {
+      setDeliveries((current) =>
+        current.map((delivery) =>
+          delivery.relationId === targetCode.relationId
+            ? {
+                ...delivery,
+                status: 'expired',
+                expiresAt: 'Access revoked',
+              }
+            : delivery,
+        ),
+      )
     }
   }
 
@@ -498,6 +543,7 @@ function App() {
               onAdd={addQuickCode}
               codes={filteredCodes}
               onCopy={copyCode}
+              onRevoke={revokeCode}
             />
           ) : null}
         </div>
@@ -1004,6 +1050,7 @@ function CodesPage({
   onAdd,
   codes,
   onCopy,
+  onRevoke,
 }: {
   filter: 'active' | 'expired'
   onFilterChange: (value: 'active' | 'expired') => void
@@ -1012,6 +1059,7 @@ function CodesPage({
   onAdd: () => void
   codes: AccessCode[]
   onCopy: (value: string) => void
+  onRevoke: (codeId: string) => void
 }) {
   const segments = [
     { key: 'active', label: 'Active' },
@@ -1052,6 +1100,16 @@ function CodesPage({
                 <button type="button" className="ghost-icon" onClick={() => onCopy(`${code.code} shared`)} aria-label={`Share ${code.code}`}>
                   <Icon name="share" />
                 </button>
+                {code.status !== 'expired' ? (
+                  <button
+                    type="button"
+                    className="revoke-button"
+                    onClick={() => onRevoke(code.id)}
+                    aria-label={`Revoke ${code.code}`}
+                  >
+                    Revoke
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
